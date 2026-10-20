@@ -1,148 +1,147 @@
+
+
 # TrustGate AI — AegisAgent
 
 ### Permission With Purpose for Every AI Action
 
-A Python-based hackathon prototype exploring real-time safety checks for AI agent actions using Task-Bound Trust Passports.
+A Streamlit-based hackathon MVP for evaluating proposed AI-agent
+actions against a Task-Bound Trust Passport.
 
-## Problem Statement
+## Problem
 
-AI agents can interact with tools, APIs, and data, but broad permissions may allow actions beyond the user's intended task. This creates risks of unauthorized access, unintended changes, and tool misuse.
+AI agents may receive broader permissions than their tasks require.
+This creates risks of unintended actions and unauthorized access.
 
-TrustGate AI explores task-specific permissions and a safety checkpoint before action execution.
+## Solution
 
-## Solution Overview
+TrustGate evaluates predefined action requests against task-specific
+permissions and produces one of three outcomes:
 
-AegisAgent evaluates proposed actions against a Task-Bound Trust Passport.
+- ALLOW: The request is permitted.
+- REVIEW: The request is flagged for human review.
+- BLOCK: The request is not permitted.
 
-The intended decision flow is:
+The dashboard records each evaluated request, its decision, and a
+UTC timestamp in a local SQLite audit log.
 
-- **Allow:** The action is permitted for the current task.
-- **Human Approval:** The action requires explicit authorization before execution.
-- **Block:** The action is outside the permitted scope.
+## Implemented Features
 
-Audit records provide visibility into decisions and their reasons.
+- Preconfigured JSON Trust Passport.
+- Active-status validation.
+- Timezone-aware passport expiry checking.
+- Exact configured file-resource matching.
+- Student-resource scope checks.
+- Protected student deletion checks.
+- ALLOW, REVIEW, and BLOCK decisions.
+- Default denial of unknown actions.
+- SQLite audit logging.
+- Dashboard counters and persistent latest-result display.
 
-## Core Innovation: Task-Bound Trust Passport
-
-The Trust Passport represents the permission boundary for a specific task.
-
-The project design includes:
-
-- Allowed tools and actions.
-- Permitted data and resource scope.
-- Access expiry.
-- Human approval requirements.
-
-See `trust_passport.json` for the configuration used by this prototype. The fields and checks implemented in the source code determine the permissions actually enforced.
-
-## System Workflow
-
-1. Configure the task-specific Trust Passport.
-2. Submit a proposed agent action.
-3. Evaluate the action against the configured permissions.
-4. Allow, request human approval, or block according to the implemented rules.
-5. Record the decision and its reason.
-
-Only permitted actions—or sensitive actions after approval—should proceed to execution. Blocked actions must stop.
-
-## Repository Structure
+## Files
 
 | File | Purpose |
 |---|---|
-| `app.py` | Application entry point and dashboard |
-| `firewall.py` | Safety-checking and action-decision logic |
-| `database.py` | Database-related functionality |
-| `trust_passport.json` | Trust Passport configuration |
-| `requirements.txt` | Python dependencies |
-| `.gitignore` | Files excluded from version control |
+| app.py | Streamlit dashboard |
+| firewall.py | Permission and passport validation |
+| database.py | SQLite initialization and audit logging |
+| trust_passport.json | Demo task permissions |
+| requirements.txt | Application dependency |
 
-## Quick Setup
+## Setup
 
-### Prerequisites
+Use Python 3.10 or newer.
 
-- Python 3
-- pip
-- Git, if using the clone command below
-
-### 1. Download the Project
+### 1. Get the project
 
 ```bash
 git clone [https://github.com/nidhi-rai09/trustgate-ai-aegisagent.git](https://github.com/nidhi-rai09/trustgate-ai-aegisagent.git)
 cd trustgate-ai-aegisagent
 ```
 
-Alternatively, download the repository ZIP from GitHub and extract it.
+Alternatively, download and extract the repository ZIP.
 
-### 2. Create a Virtual Environment
-
-```bash
-python -m venv .venv
-```
-
-Activate it on Windows Command Prompt:
-
-```bash
-.venvScriptsactivate.bat
-```
-
-Activate it on macOS or Linux:
-
-```bash
-source .venv/bin/activate
-```
-
-### 3. Install Dependencies
+### 2. Install dependencies
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-### 4. Run the Application
+### 3. Run the policy demonstration
+
+```bash
+python firewall.py
+```
+
+### 4. Launch the dashboard
 
 ```bash
 python -m streamlit run app.py
 ```
 
-Open the local URL displayed in the terminal.
+Open the local URL printed in the terminal.
 
-These instructions assume `app.py` is the Streamlit entry point and `requirements.txt` contains the required dependencies.
+The audit table is created automatically. To also initialize the
+optional sample student table, run:
 
-## Demo Walkthrough
+```bash
+python database.py
+```
 
-Use the actions and controls available in the application:
+## Expected Demo Results
 
-1. Review the configured Trust Passport.
-2. Submit an action permitted by that configuration.
-3. Submit an action outside the permitted scope.
-4. Inspect the displayed decision and explanation.
-5. Review human approval controls and audit records where implemented.
+With the supplied active, unexpired passport:
 
-Verify approval and expiry behavior against the current code and configuration.
+| Request | Expected decision |
+|---|---|
+| Read authorised file | ALLOW |
+| Read unauthorised file | BLOCK |
+| Read student record | ALLOW |
+| Update phone number | REVIEW |
+| Delete protected student | BLOCK |
+| Unknown action | BLOCK |
 
-A displayed decision alone is not proof that an external tool action was executed or prevented.
+Changing the passport status to "revoked" blocks all requests.
+An expired passport also blocks all requests.
 
-## Prototype Status and Limitations
+The example passport expires on October 21, 2026 at 11:59 PM IST.
+Update its expiry for later evaluation sessions.
 
-This repository is a hackathon prototype, not a production security product.
+## Workflow
 
-- The source code and running demonstration define the implemented functionality.
-- Live LLM, email, payment, or enterprise API integrations should not be assumed.
-- Mock integrations and simulated actions must be identified during the demonstration.
-- Enforcement depends on tool requests passing through the security layer.
-- The prototype does not guarantee protection against every prompt-injection attack, unauthorized action, or data leak.
-- No independently validated security benchmarks or percentage improvements are claimed.
+1. Load the configured Trust Passport.
+2. Submit a predefined action request.
+3. Validate passport status and expiry.
+4. Check the action and resource against permissions.
+5. Return ALLOW, REVIEW, or BLOCK.
+6. Record the request and decision in the audit log.
+
+## Limitations
+
+- This is a policy-evaluation MVP, not a production security proxy.
+- Requests are selected manually rather than generated by a live agent.
+- No actual file, student-record, email, or payment operations execute.
+- REVIEW is a flag, not an implemented approval/rejection workflow.
+- Passports are configured manually, not generated from user intent.
+- File checks compare resource names; they do not implement a secure
+  filesystem sandbox.
+- A task ID is stored, but authenticated caller-to-task binding is
+  not implemented.
+- The passport is not cryptographically signed.
+- Audit entries store actions, decisions, and timestamps, not detailed
+  reasons or tamper-evident records.
+- No independently validated security benchmarks are claimed.
 
 ## Future Scope
 
-- Integration with live AI agents and external tools.
-- Stronger resource-level authorization.
-- Signed, tamper-resistant Trust Passports.
-- Expanded approval and revocation workflows.
-- Automated security and regression tests.
-- Multi-user and multi-tenant support.
+- Live agent and tool integrations.
+- Authenticated task and agent binding.
+- Signed Trust Passports.
+- Human approval execution workflow.
+- More granular record-level access.
+- Detailed decision reasons and stronger audit integrity.
+- Automated security tests and multi-user support.
 
 ## Security
 
-Do not commit passwords, API keys, access tokens, or real personal data.
-
-Use synthetic data for testing and demonstrations.
+Use synthetic data only. Do not commit passwords, API keys,
+access tokens, or private databases.
