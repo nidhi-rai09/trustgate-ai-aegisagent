@@ -2,13 +2,13 @@ import streamlit as st
 import json
 from pathlib import Path
 from firewall import check_action
-
+from database import create_audit_table, log_action, get_audit_logs
 st.set_page_config(
     page_title="TRUSTGATE AI",
     page_icon="🛡️",
     layout="wide"
 )
-
+create_audit_table()
 st.title("🛡️ TRUSTGATE AI")
 st.subheader("AegisAgent — Real-Time AI Safety Firewall")
 
@@ -76,8 +76,28 @@ if st.button("🛡️ Evaluate Action"):
     st.write("**Action tested:**", action_choice)
     st.write("**Firewall decision:**", decision)
 
+    log_action(action_choice, decision)
+
 st.divider()
 
 st.caption(
     "TRUSTGATE AI | AegisAgent | Task-Bound Trust Passport"
 )
+st.divider()
+
+st.header("📋 Security Audit Log")
+
+audit_logs = get_audit_logs()
+
+if audit_logs:
+    st.table([
+        {
+            "ID": row[0],
+            "Action": row[1],
+            "Decision": row[2],
+            "Timestamp": row[3]
+        }
+        for row in audit_logs
+    ])
+else:
+    st.info("No actions have been recorded yet.")
