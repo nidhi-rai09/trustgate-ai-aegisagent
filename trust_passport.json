@@ -1,7 +1,13 @@
+
 {
   "passport_id": "TRUSTGATE-001",
   "task_id": "student-record-update",
-  "purpose": "Read authorised files and update permitted student records",
+  "purpose": "Evaluate authorised file access and student-record requests",
+  "status": "active",
+  "expires_at": "2026-10-21T23:59:00+05:30",
+  "allowed_student_resources": [
+    "students"
+  ],
   "permissions": {
     "read_file": [
       "authorised_notes.txt"
@@ -10,6 +16,7 @@
     "update_phone": "review",
     "delete_student": false
   },
-  "protected_student_ids": [2],
-  "status": "active"
+  "protected_student_ids": [
+    2
+  ]
 }
