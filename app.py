@@ -1,271 +1,233 @@
-import streamlit as st
+
+
+
+
 import json
 from pathlib import Path
 
-from firewall import check_action
-from database import (
-    create_audit_table,
-    log_action,
-    get_audit_logs
-)
+import streamlit as st
 
-# -----------------------------
-# Page Configuration
-# -----------------------------
+from database import create_audit_table, get_audit_logs, log_action
+from firewall import check_action
+
+
 st.set_page_config(
     page_title="TRUSTGATE AI",
     page_icon="🛡️",
-    layout="wide"
+    layout="wide",
 )
 
-# Create the audit table if it does not exist
-create_audit_table()
+PASSPORT_PATH = Path(__file__).parent / "trust_passport.json"
 
-# -----------------------------
-# Application Header
-# -----------------------------
+try:
+    with PASSPORT_PATH.open("r", encoding="utf-8") as file:
+        passport = json.load(file)
+
+    if not isinstance(passport, dict):
+        raise ValueError("The passport must be a JSON object.")
+
+except (OSError, ValueError) as exc:
+    st.error("Unable to load a valid trust_passport.json.")
+    st.code(str(exc))
+    st.stop()
+
+try:
+    create_audit_table()
+    audit_logs = list(get_audit_logs())
+except Exception as exc:
+    st.error("Unable to initialize or read the audit database.")
+    st.code(str(exc))
+    st.stop()
+
+
 st.title("🛡️ TRUSTGATE AI")
+st.subheader("AegisAgent — AI Action Safety Dashboard")
 
-st.subheader(
-    "AegisAgent — Real-Time AI Safety Firewall"
+st.write(
+    "Evaluate proposed actions against a Task-Bound Trust Passport "
+    "and record each policy decision."
 )
 
-st.markdown("""
-Monitor and evaluate AI-agent actions using a
-**Task-Bound Trust Passport**.
+st.info(
+    "MVP demonstration: predefined requests and policy evaluation. "
+    "No real external agent operations are executed."
+)
 
-TRUSTGATE AI evaluates actions against predefined security
-policies and records the resulting decisions.
-""")
 
-# -----------------------------
-# Load Trust Passport
-# -----------------------------
-passport_path = Path(__file__).parent / "trust_passport.json"
-
-with open(passport_path, "r", encoding="utf-8") as file:
-    passport = json.load(file)
-
-# -----------------------------
-# Sidebar: Trust Passport
-# -----------------------------
+# Passport configuration
 st.sidebar.header("🔐 Trust Passport")
 
-st.sidebar.write(
-    "**Passport ID:**",
-    passport["passport_id"]
-)
+for label, key in [
+    ("Passport ID", "passport_id"),
+    ("Task ID", "task_id"),
+    ("Status", "status"),
+    ("Expires at", "expires_at"),
+]:
+    st.sidebar.write(
+        f"{label}:",
+        passport.get(key, "Not specified"),
+    )
 
-st.sidebar.write(
-    "**Task ID:**",
-    passport["task_id"]
-)
-
-st.sidebar.write(
-    "**Status:**",
-    passport["status"]
-)
-
-st.sidebar.divider()
+with st.sidebar.expander("View configuration"):
+    st.json(passport)
 
 st.sidebar.caption(
-    "Permissions are evaluated using the configured "
-    "Trust Passport policy."
+    "The firewall reloads this configuration for each request. "
+    "Expiry is checked using the server clock."
 )
 
-# -----------------------------
-# Security Overview
-# -----------------------------
-st.divider()
 
+# Metrics
+st.divider()
 st.header("📊 Security Overview")
 
-audit_logs = get_audit_logs()
+columns = st.columns(4)
 
-total_actions = len(audit_logs)
-
-allowed_actions = sum(
-    1 for row in audit_logs
-    if row[2] == "ALLOW"
-)
-
-review_actions = sum(
-    1 for row in audit_logs
-    if row[2] == "REVIEW"
-)
-
-blocked_actions = sum(
-    1 for row in audit_logs
-    if row[2] == "BLOCK"
-)
-
-col1, col2, col3, col4 = st.columns(4)
-
-col1.metric(
-    "Total Actions",
-    total_actions
-)
-
-col2.metric(
+columns[0].metric("Total Actions", len(audit_logs))
+columns[1].metric(
     "✅ Allowed",
-    allowed_actions
+    sum(row[2] == "ALLOW" for row in audit_logs),
 )
-
-col3.metric(
-    "⚠️ Under Review",
-    review_actions
+columns[2].metric(
+    "⚠️ Flagged for Review",
+    sum(row[2] == "REVIEW" for row in audit_logs),
 )
-
-col4.metric(
+columns[3].metric(
     "🚫 Blocked",
-    blocked_actions
+    sum(row[2] == "BLOCK" for row in audit_logs),
 )
 
-# -----------------------------
-# Test an AI Agent Action
-# -----------------------------
-st.divider()
 
+# Test scenarios
+st.divider()
 st.header("🧪 Test an AI Agent Action")
 
-action_choice = st.selectbox(
-    "Choose an action to test",
-    [
-        "Read authorised file",
-        "Read unauthorised file",
-        "Read student record",
-        "Update phone number",
-        "Delete protected student",
-        "Unknown action"
-    ]
+scenarios = {
+    "Read authorised file": (
+        "read_file",
+        "authorised_notes.txt",
+        {},
+    ),
+    "Read unauthorised file": (
+        "read_file",
+        "secret.txt",
+        {},
+    ),
+    "Read student record": (
+        "read_student",
+        "students",
+        {},
+    ),
+    "Update phone number": (
+        "update_phone",
+        "students",
+        {},
+    ),
+    "Delete protected student": (
+        "delete_student",
+        "students",
+        {"student_id": 2},
+    ),
+    "Unknown action": (
+        "hack_system",
+        "system",
+        {},
+    ),
+}
+
+selected = st.selectbox(
+    "Choose a request",
+    list(scenarios),
 )
 
 if st.button("🛡️ Evaluate Action", type="primary"):
+    st.session_state.pop("last_result", None)
 
-    # Evaluate the selected action
-    if action_choice == "Read authorised file":
+    action, resource, extra = scenarios[selected]
 
-        decision = check_action(
-            "read_file",
-            "authorised_notes.txt"
-        )
+    try:
+        decision = check_action(action, resource, **extra)
 
-    elif action_choice == "Read unauthorised file":
+        if decision not in ("ALLOW", "REVIEW", "BLOCK"):
+            raise ValueError("Unexpected firewall decision.")
 
-        decision = check_action(
-            "read_file",
-            "secret.txt"
-        )
+        log_action(selected, decision)
 
-    elif action_choice == "Read student record":
-
-        decision = check_action(
-            "read_student",
-            "students"
-        )
-
-    elif action_choice == "Update phone number":
-
-        decision = check_action(
-            "update_phone",
-            "students"
-        )
-
-    elif action_choice == "Delete protected student":
-
-        decision = check_action(
-            "delete_student",
-            "students",
-            student_id=2
-        )
-
-    else:
-
-        decision = check_action(
-            "hack_system",
-            "system"
-        )
-
-    # Display the firewall decision
-    if decision == "ALLOW":
-
-        st.success(
-            "✅ ALLOW — The action is permitted by the current policy."
-        )
-
-    elif decision == "REVIEW":
-
-        st.warning(
-            "⚠️ REVIEW — Human approval is required."
-        )
-
-    else:
-
+    except Exception as exc:
         st.error(
-            "🚫 BLOCK — The action is not permitted."
+            "Evaluation or audit logging failed. "
+            "No external operation was executed."
+        )
+        st.code(str(exc))
+
+    else:
+        st.session_state["last_result"] = {
+            "action": selected,
+            "resource": resource,
+            "decision": decision,
+        }
+        st.rerun()
+
+
+# Preserve the result after rerunning
+result = st.session_state.get("last_result")
+
+if result:
+    st.subheader("Latest Evaluation")
+
+    if result["decision"] == "ALLOW":
+        st.success(
+            "✅ ALLOW — Permitted by the configured policy."
+        )
+    elif result["decision"] == "REVIEW":
+        st.warning(
+            "⚠️ REVIEW — Flagged for human review. "
+            "No operation has been executed."
+        )
+    else:
+        st.error(
+            "🚫 BLOCK — The request is not permitted to proceed."
         )
 
-    st.write(
-        "**Action tested:**",
-        action_choice
+    st.write("Action:", result["action"])
+    st.write("Resource:", result["resource"])
+    st.write("Decision:", result["decision"])
+
+    st.caption(
+        "This result belongs to the last evaluation. "
+        "Evaluate again after changing the passport."
     )
 
-    st.write(
-        "**Firewall decision:**",
-        decision
-    )
 
-    # Record the decision in the audit log
-    log_action(
-        action_choice,
-        decision
-    )
-
-    # Refresh the page so the summary and audit log update
-    st.rerun()
-
-# -----------------------------
-# Security Audit Log
-# -----------------------------
+# Audit history
 st.divider()
-
 st.header("📋 Security Audit Log")
 
-audit_logs = get_audit_logs()
-
 if audit_logs:
-
     st.dataframe(
         [
             {
                 "ID": row[0],
                 "Action": row[1],
                 "Decision": row[2],
-                "Timestamp": row[3]
+                "Timestamp (UTC)": row[3],
             }
             for row in audit_logs
         ],
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
     )
-
 else:
+    st.info("Evaluate a request to create the first audit entry.")
 
-    st.info(
-        "No actions have been recorded yet. "
-        "Test an action to create your first audit entry."
-    )
 
-# -----------------------------
-# Footer
-# -----------------------------
 st.divider()
-
 st.caption(
     "TRUSTGATE AI | AegisAgent | Task-Bound Trust Passport"
 )
-
 st.caption(
-    "MVP demonstration: policy evaluation and audit logging. "
-    "Real external agent operations are not executed by this demo."
+    "Scope: policy evaluation and audit logging. "
+    "Passports are preconfigured. Human approval execution, "
+    "live LLM integration, and external tool execution "
+    "are not implemented in this dashboard."
 )
